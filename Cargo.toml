@@ -2,5 +2,52 @@
 name = "shiki"
 version = "0.1.0"
 edition = "2021"
+description = "A lightweight agent for coordinating service startup order across multiple machines/containers via HTTP"
+authors = ["shiki contributors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/example/shiki"
+keywords = ["systemd", "service", "orchestration", "distributed"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP server
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Error handling
+thiserror = "2"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+hostname = "0.4"
+glob-match = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
