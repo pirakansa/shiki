@@ -47,7 +47,7 @@ graph LR
 
 [Unit]
 Description=shiki - systemd service coordination agent
-Documentation=https://github.com/yourorg/shiki
+Documentation=https://github.com/pirakansa/shiki
 After=network-online.target
 Wants=network-online.target
 
@@ -242,7 +242,7 @@ version: '3.8'
 
 services:
   shiki-agent:
-    image: yourorg/shiki:latest
+    image: pirakansa/shiki:latest
     command: serve
     ports:
       - "8080:8080"
@@ -298,7 +298,7 @@ CMD ["serve"]
 
 services:
   shiki-agent:
-    image: yourorg/shiki:latest
+    image: pirakansa/shiki:latest
     command: serve
     ports:
       - "8080:8080"

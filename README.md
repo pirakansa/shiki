@@ -1,6 +1,6 @@
 # shiki
 
-[![CI](https://github.com/yourorg/shiki/actions/workflows/ci.yml/badge.svg)](https://github.com/yourorg/shiki/actions/workflows/ci.yml)
+[![CI](https://github.com/pirakansa/shiki/actions/workflows/ci.yml/badge.svg)](https://github.com/pirakansa/shiki/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **shiki** は、複数マシン間で systemd サービスの起動順序を HTTP ベースで連携させる軽量ツールです。
@@ -42,7 +42,7 @@ sequenceDiagram
 
 ```bash
 # バイナリをダウンロード（リリース後）
-curl -L https://github.com/yourorg/shiki/releases/latest/download/shiki-linux-amd64 -o shiki
+curl -L https://github.com/pirakansa/shiki/releases/latest/download/shiki-linux-amd64 -o shiki
 chmod +x shiki
 sudo mv shiki /usr/local/bin/
 ```
