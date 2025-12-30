@@ -270,6 +270,13 @@ impl ShikiError {
             source: Some(Box::new(source)),
         }
     }
+
+    /// Creates an invalid request error.
+    pub fn invalid_request(message: impl Into<String>) -> Self {
+        ShikiError::InvalidRequest {
+            message: message.into(),
+        }
+    }
 }
 
 /// Error details for API responses.

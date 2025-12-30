@@ -66,40 +66,41 @@ fn run(cli: Cli) -> shiki::Result<()> {
 
 /// Handle the `serve` command.
 fn cmd_serve(cli: &Cli, args: &shiki::cli::ServeArgs) -> shiki::Result<()> {
-    let config = load_config(cli)?;
+    let mut config = load_config(cli)?;
 
     // Use CLI args if provided, otherwise fall back to config
-    let bind = if args.bind != "0.0.0.0" {
-        args.bind.clone()
-    } else {
-        config.server.bind.clone()
-    };
+    if args.bind != "0.0.0.0" {
+        config.server.bind = args.bind.clone();
+    }
 
-    let port = if args.port != 8080 {
-        args.port
-    } else {
-        config.server.port
-    };
+    if args.port != 8080 {
+        config.server.port = args.port;
+    }
 
     tracing::info!(
         agent_name = %config.agent_name(),
         backend = ?config.agent.backend,
-        bind = %bind,
-        port = %port,
+        bind = %config.server.bind,
+        port = %config.server.port,
         "Starting shiki server"
     );
 
-    // TODO: Implement HTTP server (Phase 3)
-    tracing::warn!("HTTP server not yet implemented");
-    println!("Server would start on {}:{}", bind, port);
-    println!("Agent name: {}", config.agent_name());
-    println!("Backend: {:?}", config.agent.backend);
+    // Create tokio runtime and run the server
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+        shiki::ShikiError::backend_with_source("Failed to create async runtime".to_string(), e)
+    })?;
 
-    Ok(())
+    runtime.block_on(async { shiki::serve(&config).await })
 }
 
 /// Handle the `notify` command.
 fn cmd_notify(_cli: &Cli, args: &shiki::cli::NotifyArgs) -> shiki::Result<()> {
+    let service_action = match args.action {
+        shiki::cli::ServiceAction::Start => shiki::service::ServiceAction::Start,
+        shiki::cli::ServiceAction::Stop => shiki::service::ServiceAction::Stop,
+        shiki::cli::ServiceAction::Restart => shiki::service::ServiceAction::Restart,
+    };
+
     tracing::info!(
         target = %args.target,
         action = %args.action,
@@ -108,17 +109,41 @@ fn cmd_notify(_cli: &Cli, args: &shiki::cli::NotifyArgs) -> shiki::Result<()> {
         "Sending notification"
     );
 
-    // TODO: Implement HTTP client notify (Phase 4)
-    tracing::warn!("Notify command not yet implemented");
-    println!(
-        "Would notify {} to {} service {} (wait={})",
-        args.target,
-        args.action,
-        args.service,
-        args.should_wait()
-    );
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+        shiki::ShikiError::backend_with_source("Failed to create async runtime".to_string(), e)
+    })?;
 
-    Ok(())
+    runtime.block_on(async {
+        let client = shiki::ShikiClient::new(&args.target)?;
+        let result = client
+            .notify(
+                &args.service,
+                service_action,
+                args.should_wait(),
+                args.timeout,
+            )
+            .await?;
+
+        println!("Request ID: {}", result.request_id);
+        println!("Service: {}", result.service);
+        println!("Action: {}", result.action);
+        println!("Result: {}", result.result);
+
+        if let Some(prev) = &result.previous_status {
+            println!("Previous Status: {}", prev);
+        }
+        if let Some(curr) = &result.current_status {
+            println!("Current Status: {}", curr);
+        }
+        if let Some(dur) = result.duration_ms {
+            println!("Duration: {}ms", dur);
+        }
+        if let Some(msg) = &result.message {
+            println!("Message: {}", msg);
+        }
+
+        Ok(())
+    })
 }
 
 /// Handle the `wait` command.
@@ -131,14 +156,25 @@ fn cmd_wait(_cli: &Cli, args: &shiki::cli::WaitArgs) -> shiki::Result<()> {
         "Waiting for service"
     );
 
-    // TODO: Implement wait polling (Phase 4)
-    tracing::warn!("Wait command not yet implemented");
-    println!(
-        "Would wait for {} on {} (timeout={}s, interval={}s)",
-        args.service, args.target, args.timeout, args.interval
-    );
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+        shiki::ShikiError::backend_with_source("Failed to create async runtime".to_string(), e)
+    })?;
 
-    Ok(())
+    runtime.block_on(async {
+        let client = shiki::ShikiClient::new(&args.target)?;
+        let timeout = std::time::Duration::from_secs(args.timeout);
+        let interval = std::time::Duration::from_secs(args.interval);
+
+        // Default to waiting for "running" status
+        let target_status = "running";
+
+        client
+            .wait_for_service(&args.service, target_status, timeout, interval)
+            .await?;
+
+        println!("Service '{}' is now {}", args.service, target_status);
+        Ok(())
+    })
 }
 
 /// Handle the `status` command.
@@ -146,19 +182,63 @@ fn cmd_status(cli: &Cli, args: &shiki::cli::StatusArgs) -> shiki::Result<()> {
     if let Some(target) = &args.target {
         // Remote status check
         tracing::info!(target = %target, "Checking remote agent status");
-        // TODO: Implement remote status check (Phase 4)
-        tracing::warn!("Remote status check not yet implemented");
-        println!("Would check status of remote agent: {}", target);
+
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            shiki::ShikiError::backend_with_source("Failed to create async runtime".to_string(), e)
+        })?;
+
+        runtime.block_on(async {
+            let client = shiki::ShikiClient::new(target)?;
+            let status = client.status().await?;
+
+            println!("Remote Agent Status");
+            println!("===================");
+            println!("Name: {}", status.agent.name);
+            println!("State: {:?}", status.agent.state);
+            println!("Mode: {}", status.agent.mode);
+            println!("Server: {}:{}", status.server.bind, status.server.port);
+            println!(
+                "TLS: {}",
+                if status.server.tls_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+            println!("Version: {}", status.version);
+            println!("Uptime: {}s", status.uptime_seconds);
+            println!("\nStatistics:");
+            println!("  Total Requests: {}", status.stats.requests_total);
+            println!("  Successful: {}", status.stats.requests_success);
+            println!("  Failed: {}", status.stats.requests_failed);
+
+            if !status.agent.tags.is_empty() {
+                println!("\nTags: {}", status.agent.tags.join(", "));
+            }
+
+            Ok(())
+        })
     } else if let Some(service) = &args.service {
         // Local service status check
         let config = load_config(cli)?;
         tracing::info!(service = %service, "Checking local service status");
-        // TODO: Implement local service status check (Phase 2)
-        tracing::warn!("Local service status check not yet implemented");
-        println!(
-            "Would check status of local service '{}' using {:?} backend",
-            service, config.agent.backend
-        );
+
+        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+            shiki::ShikiError::backend_with_source("Failed to create async runtime".to_string(), e)
+        })?;
+
+        runtime.block_on(async {
+            let controller = shiki::ServiceController::from_config(&config)?;
+            let status = controller.status(service).await?;
+
+            println!("Service: {}", status.name);
+            println!("Status: {}", status.state);
+            if let Some(desc) = &status.description {
+                println!("Description: {}", desc);
+            }
+
+            Ok(())
+        })
     } else {
         // Local agent status
         let config = load_config(cli)?;
@@ -195,9 +275,9 @@ fn cmd_status(cli: &Cli, args: &shiki::cli::StatusArgs) -> shiki::Result<()> {
                 println!("  - {}", name);
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 /// Handle the `config` subcommand.
