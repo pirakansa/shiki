@@ -118,9 +118,7 @@ mod tests {
                 start: "true".to_string(),
                 stop: "true".to_string(),
                 status: "true".to_string(),
-                restart: None,
-                working_dir: None,
-                env: vec![],
+                ..Default::default()
             },
         );
         config.services = services;

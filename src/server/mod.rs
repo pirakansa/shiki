@@ -7,6 +7,9 @@ pub mod handlers;
 pub mod response;
 pub mod state;
 
+#[cfg(test)]
+mod handlers_tests;
+
 use crate::config::Config;
 use crate::error::Result;
 use axum::{
@@ -88,9 +91,7 @@ mod tests {
                 start: "true".to_string(),
                 stop: "true".to_string(),
                 status: "true".to_string(),
-                restart: None,
-                working_dir: None,
-                env: vec![],
+                ..Default::default()
             },
         );
         config

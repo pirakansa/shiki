@@ -7,6 +7,9 @@ pub mod backend;
 pub mod exec;
 pub mod systemd;
 
+#[cfg(test)]
+mod exec_tests;
+
 use crate::config::{Backend, Config};
 use crate::error::{Result, ShikiError};
 use exec::ExecBackend;
@@ -134,9 +137,7 @@ mod tests {
                 start: "echo starting".to_string(),
                 stop: "echo stopping".to_string(),
                 status: "true".to_string(),
-                restart: None,
-                working_dir: None,
-                env: vec![],
+                ..Default::default()
             },
         );
         config.services = services;
