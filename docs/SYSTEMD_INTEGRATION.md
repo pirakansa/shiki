@@ -1,6 +1,6 @@
 # SYSTEMD_INTEGRATION.md - systemd 連携ガイド
 
-> **Version**: 0.1.0  
+> **Version**: 0.2.0  
 > **Last Updated**: 2025-12-30  
 > **Status**: Draft
 
@@ -8,15 +8,16 @@
 
 ## 1. 概要
 
-このドキュメントでは、shiki と systemd を連携させる方法を説明します。
+このドキュメントでは、shiki と systemd を連携させる方法、および Docker コンテナ環境での利用方法を説明します。
 
 ### 1.1 連携パターン
 
 | パターン | 説明 | 用途 |
 |----------|------|------|
-| **A** | shiki を systemd サービスとして実行 | エージェントの常駐 |
+| **A** | shiki を systemd サービスとして実行 | ホスト環境でのエージェント常駐 |
 | **B** | ExecStartPre/Post で shiki notify を呼び出し | 依存サービスの起動連携 |
 | **C** | A + B の組み合わせ | 本番運用（推奨） |
+| **D** | Docker コンテナ内で exec バックエンド | systemd 非対応環境 |
 
 ### 1.2 連携アーキテクチャ
 
@@ -233,7 +234,137 @@ WantedBy=multi-user.target
 
 ## 4. Docker 環境での利用
 
-### 4.1 Docker Compose 連携
+### 4.1 exec バックエンドによる複数サービス管理
+
+Docker コンテナ内で systemd を使わずに複数サービスを管理できます。
+
+**設定ファイル例:**
+
+```yaml
+# config.yaml - exec バックエンド
+server:
+  bind: "0.0.0.0"
+  port: 8080
+
+agent:
+  name: "multi-service-container"
+  backend: exec
+
+services:
+  nginx:
+    start: "/usr/sbin/nginx"
+    stop: "/usr/sbin/nginx -s quit"
+    status: "pgrep -x nginx"
+    
+  redis:
+    start: "/usr/bin/redis-server /etc/redis.conf --daemonize yes"
+    stop: "/usr/bin/redis-cli shutdown"
+    status: "/usr/bin/redis-cli ping"
+    
+  myapp:
+    start: "/app/start.sh"
+    stop: "/app/stop.sh"
+    status: "/app/health.sh"
+    working_dir: "/app"
+    env:
+      - "DATABASE_URL=postgres://db:5432/mydb"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+```
+
+**Dockerfile 例:**
+
+```dockerfile
+FROM debian:bookworm-slim
+
+# 複数サービスをインストール
+RUN apt-get update && apt-get install -y \
+    nginx \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# shiki バイナリをコピー
+COPY shiki /usr/local/bin/
+COPY config.yaml /etc/shiki/
+
+# アプリケーションをコピー
+COPY app/ /app/
+
+EXPOSE 8080 80 6379
+
+# shiki をエントリーポイントに
+ENTRYPOINT ["/usr/local/bin/shiki", "serve"]
+```
+
+**起動後のサービス操作:**
+
+```bash
+# コンテナ内の nginx を起動
+curl -X POST http://localhost:8080/api/v1/services/nginx/start
+
+# redis を起動
+curl -X POST http://localhost:8080/api/v1/services/redis/start
+
+# 全サービスの状態を確認
+curl http://localhost:8080/api/v1/services
+```
+
+### 4.2 Docker Compose での複数コンテナ連携
+
+```yaml
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # DB コンテナ（exec バックエンド）
+  db:
+    image: pirakansa/shiki:latest
+    volumes:
+      - ./db-config.yaml:/etc/shiki/config.yaml:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "shiki", "status", "--service", "postgresql"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API コンテナ（exec バックエンド）
+  api:
+    image: pirakansa/shiki:latest
+    volumes:
+      - ./api-config.yaml:/etc/shiki/config.yaml:ro
+    ports:
+      - "8082:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    # 起動時に DB の準備完了を待機
+    command: >
+      sh -c "
+        shiki wait --target db:8080 --service postgresql --timeout 60 &&
+        shiki serve
+      "
+
+  # Web コンテナ
+  web:
+    image: pirakansa/shiki:latest
+    volumes:
+      - ./web-config.yaml:/etc/shiki/config.yaml:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+```
+
+### 4.3 systemd バックエンドでの Docker Compose 連携
+
+ホストの systemd を操作する場合（従来の方法）：
 
 ```yaml
 # docker-compose.yml
@@ -266,7 +397,7 @@ services:
       - SHIKI_TARGET=shiki-agent:8080
 ```
 
-### 4.2 Dockerfile 例
+### 4.4 Dockerfile 例（基本）
 
 ```dockerfile
 # Dockerfile
@@ -289,7 +420,7 @@ ENTRYPOINT ["/usr/local/bin/shiki"]
 CMD ["serve"]
 ```
 
-### 4.3 コンテナからホストの systemd を操作
+### 4.5 コンテナからホストの systemd を操作
 
 コンテナ内の shiki からホストの systemd サービスを操作する場合:
 

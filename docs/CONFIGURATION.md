@@ -1,6 +1,6 @@
 # CONFIGURATION.md - shiki 設定リファレンス
 
-> **Version**: 0.1.0  
+> **Version**: 0.2.0  
 > **Last Updated**: 2025-12-30  
 > **Status**: Draft
 
@@ -57,6 +57,14 @@ agent:
   name: ""  # 空の場合はホスト名を使用
   mode: "standalone"
   tags: []
+  backend: "systemd"  # "systemd" または "exec"
+
+# exec バックエンド用サービス定義（backend: exec の場合）
+# services:
+#   nginx:
+#     start: "/usr/sbin/nginx"
+#     stop: "/usr/sbin/nginx -s quit"
+#     status: "pgrep -x nginx"
 
 # リトライ設定
 retry:
@@ -71,8 +79,8 @@ timeout:
   read_seconds: 30
   service_seconds: 60
 
-# サービス制御設定
-services:
+# サービスアクセス制御（systemd バックエンド用）
+acl:
   allowed: []  # 空の場合は全サービス許可
   denied: []
 
@@ -189,6 +197,7 @@ logging:
 | `name` | string | ホスト名 | エージェント識別名 |
 | `mode` | string | `"standalone"` | 動作モード |
 | `tags` | array[string] | `[]` | タグ（フィルタリング用） |
+| `backend` | string | `"systemd"` | バックエンド種別 |
 
 #### 動作モード
 
@@ -197,21 +206,94 @@ logging:
 | `standalone` | 単独動作（デフォルト） |
 | `cluster` | クラスタモード（将来実装） |
 
-**例: タグ付きエージェント**
+#### バックエンド種別
+
+| バックエンド | 説明 |
+|--------------|------|
+| `systemd` | systemctl 経由でサービス操作（デフォルト） |
+| `exec` | 任意コマンドでサービス操作 |
+
+**例: systemd バックエンド（ホスト環境）**
 
 ```yaml
 agent:
   name: "web-server-01"
   mode: "standalone"
+  backend: "systemd"
   tags:
     - "web"
     - "production"
-    - "tokyo"
+```
+
+**例: exec バックエンド（Docker コンテナ）**
+
+```yaml
+agent:
+  name: "container-01"
+  mode: "standalone"
+  backend: "exec"
+  tags:
+    - "docker"
 ```
 
 ---
 
-### 3.5 retry - リトライ設定
+### 3.5 services - サービス定義（exec バックエンド用）
+
+`agent.backend: exec` の場合に必要です。サービスごとに起動/停止/状態確認コマンドを定義します。
+
+| キー | 型 | 必須 | 説明 |
+|------|-----|------|------|
+| `start` | string | Yes | サービス起動コマンド |
+| `stop` | string | Yes | サービス停止コマンド |
+| `status` | string | Yes | 状態確認コマンド（終了コード 0 = running） |
+| `restart` | string | No | 再起動コマンド（未定義時は stop → start） |
+| `working_dir` | string | No | 作業ディレクトリ |
+| `env` | array[string] | No | 環境変数リスト（`KEY=VALUE` 形式） |
+
+**例: 1コンテナ複数サービス**
+
+```yaml
+agent:
+  backend: exec
+
+services:
+  nginx:
+    start: "/usr/sbin/nginx"
+    stop: "/usr/sbin/nginx -s quit"
+    status: "pgrep -x nginx"
+    
+  redis:
+    start: "/usr/bin/redis-server /etc/redis.conf --daemonize yes"
+    stop: "/usr/bin/redis-cli shutdown"
+    status: "/usr/bin/redis-cli ping"
+    
+  myapp:
+    start: "/app/start.sh"
+    stop: "/app/stop.sh"
+    status: "/app/health.sh"
+    working_dir: "/app"
+    env:
+      - "DATABASE_URL=postgres://localhost/mydb"
+      - "REDIS_URL=redis://localhost:6379"
+```
+
+**例: 単一サービス**
+
+```yaml
+agent:
+  backend: exec
+
+services:
+  app:
+    start: "/entrypoint.sh"
+    stop: "pkill -f entrypoint"
+    status: "pgrep -f entrypoint"
+```
+
+---
+
+### 3.6 retry - リトライ設定
 
 | キー | 型 | デフォルト | 説明 |
 |------|-----|-----------|------|
@@ -238,7 +320,7 @@ retry:
 
 ---
 
-### 3.6 timeout - タイムアウト設定
+### 3.7 timeout - タイムアウト設定
 
 | キー | 型 | デフォルト | 説明 |
 |------|-----|-----------|------|
@@ -257,7 +339,9 @@ timeout:
 
 ---
 
-### 3.7 services - サービス制御設定
+### 3.8 acl - サービスアクセス制御（systemd バックエンド用）
+
+`agent.backend: systemd` の場合に有効です。操作可能なサービスを制限します。
 
 | キー | 型 | デフォルト | 説明 |
 |------|-----|-----------|------|
@@ -279,7 +363,7 @@ timeout:
 **例: 特定サービスのみ許可**
 
 ```yaml
-services:
+acl:
   allowed:
     - "nginx"
     - "postgresql"
@@ -291,7 +375,7 @@ services:
 **例: セキュリティ関連サービスを拒否**
 
 ```yaml
-services:
+acl:
   allowed: []  # 全サービス許可
   denied:
     - "sshd"
@@ -299,9 +383,11 @@ services:
     - "systemd-*"
 ```
 
+> **注意**: exec バックエンドでは `services` で定義されたサービスのみ操作可能なため、`acl` は不要です。
+
 ---
 
-### 3.8 cluster - クラスタ設定（将来実装）
+### 3.9 cluster - クラスタ設定（将来実装）
 
 | キー | 型 | デフォルト | 説明 |
 |------|-----|-----------|------|
@@ -343,8 +429,9 @@ cluster:
 | `SHIKI_LOG_LEVEL` | `logging.level` | `debug` |
 | `SHIKI_LOG_FORMAT` | `logging.format` | `json` |
 | `SHIKI_AGENT_NAME` | `agent.name` | `web-server-01` |
+| `SHIKI_AGENT_BACKEND` | `agent.backend` | `systemd` |
 
-**例: Docker 環境での環境変数設定**
+**例: Docker 環境での環境変数設定（systemd バックエンド）**
 
 ```bash
 docker run -d \
@@ -352,6 +439,15 @@ docker run -d \
   -e SHIKI_AUTH_ENABLED=true \
   -e SHIKI_AUTH_TOKEN=secret \
   -e SHIKI_LOG_LEVEL=info \
+  shiki:latest serve
+```
+
+**例: exec バックエンド（環境変数ではサービス定義不可、設定ファイル必須）**
+
+```bash
+docker run -d \
+  -e SHIKI_AGENT_BACKEND=exec \
+  -v ./config.yaml:/etc/shiki/config.yaml:ro \
   shiki:latest serve
 ```
 
@@ -372,7 +468,19 @@ shiki config validate -c /etc/shiki/config.yaml
   - Server: 0.0.0.0:8080
   - Auth: disabled
   - Logging: info (json)
-  - Services: 3 allowed, 2 denied
+  - Backend: systemd
+  - ACL: 3 allowed, 2 denied
+```
+
+**出力例（exec バックエンド）:**
+
+```
+✓ Configuration is valid
+  - Server: 0.0.0.0:8080
+  - Auth: disabled
+  - Logging: info (json)
+  - Backend: exec
+  - Services: nginx, redis, myapp
 ```
 
 **出力例（エラー時）:**

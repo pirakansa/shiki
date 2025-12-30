@@ -76,12 +76,40 @@ agent:
   # - "cluster": クラスタモード（将来実装）
   mode: "standalone"
   
+  # バックエンド種別
+  # - "systemd": systemctl 経由でサービス操作（デフォルト、ホスト環境向け）
+  # - "exec": 任意コマンドでサービス操作（Docker コンテナ向け）
+  backend: "systemd"
+  
   # タグ（フィルタリング・識別用）
   tags: []
   # tags:
   #   - "web"
   #   - "production"
   #   - "tokyo-dc"
+
+# ------------------------------------------------------------------------------
+# サービス定義（exec バックエンド用）
+# ------------------------------------------------------------------------------
+# backend: exec の場合に必要。サービスごとに起動/停止/状態確認コマンドを定義。
+# backend: systemd の場合は不要（systemctl 経由で操作）。
+#
+# services:
+#   nginx:
+#     start: "/usr/sbin/nginx"
+#     stop: "/usr/sbin/nginx -s quit"
+#     status: "pgrep -x nginx"
+#   redis:
+#     start: "/usr/bin/redis-server /etc/redis.conf --daemonize yes"
+#     stop: "/usr/bin/redis-cli shutdown"
+#     status: "/usr/bin/redis-cli ping"
+#   myapp:
+#     start: "/app/start.sh"
+#     stop: "/app/stop.sh"
+#     status: "/app/health.sh"
+#     working_dir: "/app"
+#     env:
+#       - "DATABASE_URL=postgres://localhost/mydb"
 
 # ------------------------------------------------------------------------------
 # リトライ設定
@@ -115,9 +143,11 @@ timeout:
   service_seconds: 60
 
 # ------------------------------------------------------------------------------
-# サービス制御設定
+# サービスアクセス制御（systemd バックエンド用）
 # ------------------------------------------------------------------------------
-services:
+# backend: systemd の場合に有効。操作可能なサービスを制限。
+# backend: exec の場合は services で定義されたサービスのみ操作可能。
+acl:
   # 許可サービスリスト
   # 空の場合は全サービスが許可される（denied リストを除く）
   # ワイルドカード対応: * (任意の文字列), ? (任意の1文字)
