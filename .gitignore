@@ -21,3 +21,7 @@ target
 #.idea/
 
 .env
+/.rustup
+/.cargo/.global-cache
+/.cargo/.package-cache*
+
