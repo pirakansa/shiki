@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8
 
 RUN apt update -y && \
-    apt install -y curl git sudo zstd make
+    apt install -y curl git sudo zstd make musl-tools
 
 
 ARG CONTAINER_USERNAME=builder
@@ -25,6 +25,7 @@ USER ${CONTAINER_USERNAME}
 
 RUN rustup default stable && \
     rustup component add rustfmt clippy && \
+    rustup target add x86_64-unknown-linux-musl && \
     cargo install cargo-audit
 
 WORKDIR /work

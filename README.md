@@ -1,5 +1,15 @@
 # shiki
 
+<p align="center">
+  <img src="./docs/shiki-logo.png" width="320" alt="SHIKI logo"/>
+</p>
+
+<h1 align="center">S.H.I.K.I.</h1>
+<p align="center">
+  <strong>System Handoff & Inter-node Kickoff Initiator.</strong><br>
+  A cross-host sequence orchestrator that extends systemd beyond a single machine.
+</p>
+
 [![CI](https://github.com/pirakansa/shiki/actions/workflows/ci.yml/badge.svg)](https://github.com/pirakansa/shiki/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
