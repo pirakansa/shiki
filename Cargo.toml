@@ -45,6 +45,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 hostname = "0.4"
 glob-match = "0.2"
+shell-words = "1"
 
 [dev-dependencies]
 tempfile = "3"

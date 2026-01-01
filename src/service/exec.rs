@@ -12,8 +12,13 @@ use crate::service::backend::{
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
+
+/// Default timeout for command execution in seconds.
+const DEFAULT_COMMAND_TIMEOUT_SECS: u64 = 60;
 
 /// Exec backend for service operations.
 ///
@@ -53,13 +58,15 @@ impl ExecBackend {
             "Executing command"
         );
 
-        // Parse command into program and arguments
-        let parts: Vec<&str> = command.split_whitespace().collect();
+        // Parse command into program and arguments using shell-style parsing
+        let parts = shell_words::split(command).map_err(|e| {
+            ShikiError::backend(format!("Failed to parse command '{}': {}", command, e))
+        })?;
         if parts.is_empty() {
             return Err(ShikiError::backend("Empty command"));
         }
 
-        let program = parts[0];
+        let program = &parts[0];
         let args = &parts[1..];
 
         // Build the command
@@ -87,13 +94,22 @@ impl ExecBackend {
             }
         }
 
-        // Execute the command
-        let output = cmd.output().await.map_err(|e| {
-            ShikiError::backend_with_source(
-                format!("Failed to execute command '{}': {}", command, e),
-                e,
-            )
-        })?;
+        // Execute the command with timeout
+        let timeout_secs = definition.timeout.unwrap_or(DEFAULT_COMMAND_TIMEOUT_SECS);
+        let timeout_duration = Duration::from_secs(timeout_secs);
+
+        let output = timeout(timeout_duration, cmd.output())
+            .await
+            .map_err(|_| ShikiError::Timeout {
+                operation: format!("command execution: {}", command),
+                seconds: timeout_secs,
+            })?
+            .map_err(|e| {
+                ShikiError::backend_with_source(
+                    format!("Failed to execute command '{}': {}", command, e),
+                    e,
+                )
+            })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

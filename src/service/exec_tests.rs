@@ -160,4 +160,128 @@ mod tests {
             .unwrap();
         assert!(result.success);
     }
+
+    #[tokio::test]
+    async fn test_command_with_quoted_arguments() {
+        let mut services = HashMap::new();
+
+        // Service with quoted arguments containing spaces
+        services.insert(
+            "quoted-args-service".to_string(),
+            ServiceDefinition {
+                start: r#"echo "hello world""#.to_string(),
+                stop: "echo stopping".to_string(),
+                status: "true".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let backend = ExecBackend::new(services);
+
+        // This should succeed - quoted arguments are now properly parsed
+        let result = backend.start("quoted-args-service").await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn test_command_with_single_quotes() {
+        let mut services = HashMap::new();
+
+        // Service with single-quoted arguments
+        services.insert(
+            "single-quote-service".to_string(),
+            ServiceDefinition {
+                start: "echo 'hello world'".to_string(),
+                stop: "echo stopping".to_string(),
+                status: "true".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let backend = ExecBackend::new(services);
+
+        let result = backend.start("single-quote-service").await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn test_command_timeout() {
+        let mut services = HashMap::new();
+
+        // Service with a status command that will timeout (sleep for longer than timeout)
+        // status is checked first, so we make the status command slow
+        services.insert(
+            "slow-service".to_string(),
+            ServiceDefinition {
+                start: "echo starting".to_string(),
+                stop: "echo stopping".to_string(),
+                status: "sleep 10".to_string(), // Status check will timeout
+                timeout: Some(1),               // 1 second timeout
+                ..Default::default()
+            },
+        );
+
+        let backend = ExecBackend::new(services);
+
+        // This should fail with a timeout error when checking status
+        let result = backend.status("slow-service").await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let err_string = err.to_string();
+        assert!(
+            err_string.contains("Timeout"),
+            "Expected timeout error, got: {}",
+            err_string
+        );
+    }
+
+    #[tokio::test]
+    async fn test_command_completes_within_timeout() {
+        let mut services = HashMap::new();
+
+        // Service with a quick command and generous timeout
+        services.insert(
+            "quick-service".to_string(),
+            ServiceDefinition {
+                start: "echo quick".to_string(),
+                stop: "echo stopping".to_string(),
+                status: "true".to_string(),
+                timeout: Some(30), // 30 second timeout
+                ..Default::default()
+            },
+        );
+
+        let backend = ExecBackend::new(services);
+
+        // This should succeed within the timeout
+        let result = backend.start("quick-service").await.unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_shell_words_parsing() {
+        // Verify shell_words parsing behavior
+        let cmd = r#"echo "hello world" --flag"#;
+        let parts = shell_words::split(cmd).unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], "echo");
+        assert_eq!(parts[1], "hello world");
+        assert_eq!(parts[2], "--flag");
+
+        // Test with escaped quotes
+        let cmd2 = r#"echo "it's a test""#;
+        let parts2 = shell_words::split(cmd2).unwrap();
+        assert_eq!(parts2.len(), 2);
+        assert_eq!(parts2[0], "echo");
+        assert_eq!(parts2[1], "it's a test");
+
+        // Test with path containing spaces
+        let cmd3 = r#""/usr/bin/my app" --config "/path/to/config file.yaml""#;
+        let parts3 = shell_words::split(cmd3).unwrap();
+        assert_eq!(parts3.len(), 3);
+        assert_eq!(parts3[0], "/usr/bin/my app");
+        assert_eq!(parts3[1], "--config");
+        assert_eq!(parts3[2], "/path/to/config file.yaml");
+    }
 }
