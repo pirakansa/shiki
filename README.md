@@ -1,5 +1,3 @@
-# shiki
-
 <p align="center">
   <img src="./docs/shiki-logo.png" width="320" alt="SHIKI logo"/>
 </p>
